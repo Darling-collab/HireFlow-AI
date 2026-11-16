@@ -6,7 +6,7 @@ from hireflow.ui import inject_theme
 
 st.set_page_config(page_title="HireFlow AI", page_icon="✦", layout="wide", initial_sidebar_state="expanded")
 inject_theme(); init_db(); seed_status_dictionary()
-if "seeded" not in st.session_state:
+if "seeded" not in st.session_state and __import__("hireflow.db", fromlist=["settings"]).settings.app_env != "cloud-demo":
     seed_demo_data(); st.session_state.seeded=True
 
 PAGES={"总览":"dashboard","AI 智能采集":"ai_intake","候选人管理":"candidates","招聘流程看板":"recruitment_board","提醒中心":"reminders","招聘分析":"analytics","数据管理":"data_tools"}

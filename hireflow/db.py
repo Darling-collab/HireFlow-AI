@@ -13,7 +13,13 @@ else:
 engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True, pool_recycle=1800)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
-def init_db(): Base.metadata.create_all(engine)
+def init_db():
+    Base.metadata.create_all(engine)
+    if settings.app_env == "cloud-demo" and settings.database_url == "sqlite:///./data/hireflow-demo.db":
+        with SessionLocal() as session:
+            if session.query(Candidate).count() < 500:
+                from scripts.generate_demo_db import generate_demo_database
+                generate_demo_database("data/hireflow-demo.db", 500)
 
 def health_check() -> bool:
     with engine.connect() as connection:

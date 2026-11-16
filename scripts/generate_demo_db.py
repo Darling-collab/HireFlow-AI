@@ -13,23 +13,30 @@ STAGES=["invited","screening_passed","first_round_passed","second_round_passed",
 FAMILY=["林","周","陈","许","沈","顾","唐","徐","苏","韩","宋","江","梁","叶","温","程","陆","傅","方","郑","沈","沈","谢","何","罗","彭","蒋","袁","邵","白"]
 GIVEN=["雨桐","亦辰","思远","嘉宁","若涵","明轩","婉清","子墨","念安","景行","知夏","承宇","书瑶","星辰","予安","嘉言","清妍","景川","以宁","明哲","语嫣","昊然","安然","修远","可心","宇轩","诗涵","泽宇","欣怡","浩然"]
 
-def main():
-    p=argparse.ArgumentParser(); p.add_argument("--output",default="data/hireflow-demo.db"); p.add_argument("--count",type=int,default=500); args=p.parse_args()
-    output=Path(args.output).resolve(); real=Path("data/hireflow.db").resolve()
+def generate_demo_database(output_path="data/hireflow-demo.db", count=500):
+    output=Path(output_path).resolve(); real=Path("data/hireflow.db").resolve()
     if output==real: raise SystemExit("Refusing to write the real work database")
     engine=create_engine(f"sqlite:///{output}"); Base.metadata.create_all(engine); Session=sessionmaker(bind=engine)
     with Session() as s:
-        if s.query(Candidate).count(): print(f"demo database already populated: {output}"); return
-        for title in POSITIONS: s.add(Position(title=title,description="演示岗位",status="open"))
-        now=datetime.now(timezone.utc); rng=random.Random(20261112); names=[f"{rng.choice(FAMILY)}{rng.choice(GIVEN)}{i:03d}" for i in range(args.count)]
+        existing_count=s.query(Candidate).count()
+        if existing_count >= count: print(f"demo database already populated: {output}"); return
+        if s.query(Position).count() == 0:
+            for title in POSITIONS: s.add(Position(title=title,description="演示岗位",status="open"))
+        now=datetime.now(timezone.utc); rng=random.Random(20261112); names=[f"{rng.choice(FAMILY)}{rng.choice(GIVEN)}{i:03d}" for i in range(existing_count, count)]
         candidates=[]
-        for i,name in enumerate(names):
+        for offset,name in enumerate(names):
+            i=existing_count+offset
             stage=rng.choices(STAGES,weights=[10,15,16,12,8,7,5,6,5,10,6])[0]; created=now-timedelta(days=rng.randint(0,180)); follow=date.today()+timedelta(days=rng.randint(-14,14)); c=Candidate(name=name,email=f"demo{i:03d}@example.com",phone=f"139{i:08d}",position=rng.choice(POSITIONS),source=rng.choice(CHANNELS),status="new",status_key=stage,status_raw=stage,follow_up_date=follow,notes="演示数据",created_at=created,updated_at=created,last_activity_at=created); s.add(c); s.flush(); candidates.append(c)
             path={"screening_passed":["invited"],"first_round_passed":["invited","screening_passed"],"second_round_passed":["invited","screening_passed","first_round_passed"],"final_round_passed":["invited","screening_passed","first_round_passed","second_round_passed"],"offer_sent":["invited","screening_passed","first_round_passed","second_round_passed","final_round_passed"],"offer_accepted":["invited","screening_passed","first_round_passed","second_round_passed","final_round_passed","offer_sent"],"hired":["invited","screening_passed","first_round_passed","second_round_passed","final_round_passed","offer_sent","offer_accepted"]}.get(stage,[])+[stage]
             for j,evstage in enumerate(path):
                 evtime=created+timedelta(days=j+1); s.add(RecruitmentEvent(candidate_id=c.id,event_type="stage_update",status_key=evstage,raw_expression="演示招聘事件",dedupe_key=f"demo-{i}-{j}",event_time=evtime,created_at=evtime))
             if i<180: s.add(Reminder(candidate_id=c.id,due_at=datetime.combine(follow,datetime.min.time(),tzinfo=timezone.utc),status="pending" if i<80 else "completed",message="演示跟进任务",created_at=created))
-        for i in range(8): s.add(BadCase(reason="DEMO_UNKNOWN_STATUS" if i%2 else "DEMO_MISSING_FIELD",raw_status="演示异常",resolution="演示数据，不进入候选人统计",created_at=now-timedelta(days=i)))
+        if s.query(BadCase).count() == 0:
+            for i in range(8): s.add(BadCase(reason="DEMO_UNKNOWN_STATUS" if i%2 else "DEMO_MISSING_FIELD",raw_status="演示异常",resolution="演示数据，不进入候选人统计",created_at=now-timedelta(days=i)))
         s.commit()
         print(f"created isolated demo database: {output} candidates={len(candidates)} events={s.query(RecruitmentEvent).count()} reminders={s.query(Reminder).count()} positions={s.query(Position).count()}")
+
+def main():
+    p=argparse.ArgumentParser(); p.add_argument("--output",default="data/hireflow-demo.db"); p.add_argument("--count",type=int,default=500); args=p.parse_args()
+    generate_demo_database(args.output, args.count)
 if __name__=="__main__": main()
